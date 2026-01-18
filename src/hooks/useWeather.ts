@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { z } from 'zod';
 import { 
   Location, 
   CurrentWeather, 
@@ -13,6 +14,83 @@ import {
 // Open-Meteo API (free, no API key required)
 const WEATHER_API_BASE = 'https://api.open-meteo.com/v1';
 const GEO_API_BASE = 'https://geocoding-api.open-meteo.com/v1';
+
+// === Zod Schemas for API Response Validation ===
+
+const GeocodingResultSchema = z.object({
+  name: z.string(),
+  admin1: z.string().optional(),
+  country: z.string().optional(),
+  latitude: z.number(),
+  longitude: z.number(),
+});
+
+const GeocodingResponseSchema = z.object({
+  results: z.array(GeocodingResultSchema).optional(),
+});
+
+const CurrentWeatherResponseSchema = z.object({
+  current: z.object({
+    temperature_2m: z.number(),
+    relative_humidity_2m: z.number(),
+    apparent_temperature: z.number(),
+    weather_code: z.number(),
+    wind_speed_10m: z.number(),
+    wind_direction_10m: z.number(),
+    wind_gusts_10m: z.number(),
+    pressure_msl: z.number(),
+    visibility: z.number(),
+    is_day: z.number(),
+  }),
+});
+
+const ForecastResponseSchema = z.object({
+  daily: z.object({
+    time: z.array(z.string()),
+    weather_code: z.array(z.number()),
+    temperature_2m_max: z.array(z.number()),
+    temperature_2m_min: z.array(z.number()),
+    precipitation_probability_max: z.array(z.number()),
+    wind_speed_10m_max: z.array(z.number()),
+    relative_humidity_2m_mean: z.array(z.number()),
+  }),
+});
+
+const EarthquakeFeatureSchema = z.object({
+  id: z.string(),
+  properties: z.object({
+    mag: z.number().nullable(),
+    place: z.string().nullable(),
+    time: z.number(),
+  }),
+  geometry: z.object({
+    coordinates: z.tuple([z.number(), z.number(), z.number()]),
+  }),
+});
+
+const EarthquakeResponseSchema = z.object({
+  features: z.array(EarthquakeFeatureSchema),
+});
+
+// === Input Validation ===
+
+const validateSearchQuery = (query: string): { valid: boolean; sanitized: string } => {
+  const trimmed = query.trim();
+  
+  // Check length constraints
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    return { valid: false, sanitized: '' };
+  }
+  
+  // Allow alphanumeric, spaces, commas, hyphens, and common international characters
+  const sanitized = trimmed.replace(/[^\w\s,\-'.\u00C0-\u024F\u1E00-\u1EFF]/g, '');
+  
+  if (sanitized.length < 2) {
+    return { valid: false, sanitized: '' };
+  }
+  
+  return { valid: true, sanitized };
+};
 
 const mapConditionCode = (code: number, isDay: boolean): WeatherCondition => {
   if (code === 0) return isDay ? 'sunny' : 'sunny';
@@ -72,15 +150,28 @@ export const useWeather = () => {
   const [error, setError] = useState<string | null>(null);
 
   const searchLocation = async (query: string): Promise<Location[]> => {
+    // Validate and sanitize input
+    const validation = validateSearchQuery(query);
+    if (!validation.valid) {
+      return [];
+    }
+    
     try {
       const response = await fetch(
-        `${GEO_API_BASE}/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`
+        `${GEO_API_BASE}/search?name=${encodeURIComponent(validation.sanitized)}&count=5&language=en&format=json`
       );
       const data = await response.json();
       
-      if (!data.results) return [];
+      // Validate API response structure
+      const parsed = GeocodingResponseSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('Invalid geocoding API response:', parsed.error);
+        return [];
+      }
       
-      return data.results.map((r: any) => ({
+      if (!parsed.data.results) return [];
+      
+      return parsed.data.results.map((r) => ({
         city: r.name,
         locality: r.admin1,
         country: r.country,
@@ -106,23 +197,27 @@ export const useWeather = () => {
       );
       const currentData = await currentResponse.json();
       
-      if (currentData.current) {
-        const c = currentData.current;
-        setCurrentWeather({
-          temperature: Math.round(c.temperature_2m),
-          feelsLike: Math.round(c.apparent_temperature),
-          condition: mapConditionCode(c.weather_code, c.is_day === 1),
-          humidity: c.relative_humidity_2m,
-          windSpeed: Math.round(c.wind_speed_10m),
-          windDirection: c.wind_direction_10m,
-          windGusts: Math.round(c.wind_gusts_10m),
-          pressure: Math.round(c.pressure_msl),
-          visibility: Math.round(c.visibility / 1000),
-          isDay: c.is_day === 1,
-          description: getConditionDescription(c.weather_code),
-          icon: String(c.weather_code),
-        });
+      // Validate current weather response
+      const parsedCurrent = CurrentWeatherResponseSchema.safeParse(currentData);
+      if (!parsedCurrent.success) {
+        throw new Error('Invalid current weather response from API');
       }
+      
+      const c = parsedCurrent.data.current;
+      setCurrentWeather({
+        temperature: Math.round(c.temperature_2m),
+        feelsLike: Math.round(c.apparent_temperature),
+        condition: mapConditionCode(c.weather_code, c.is_day === 1),
+        humidity: c.relative_humidity_2m,
+        windSpeed: Math.round(c.wind_speed_10m),
+        windDirection: c.wind_direction_10m,
+        windGusts: Math.round(c.wind_gusts_10m),
+        pressure: Math.round(c.pressure_msl),
+        visibility: Math.round(c.visibility / 1000),
+        isDay: c.is_day === 1,
+        description: getConditionDescription(c.weather_code),
+        icon: String(c.weather_code),
+      });
 
       // Fetch 7-day forecast
       const forecastResponse = await fetch(
@@ -130,22 +225,26 @@ export const useWeather = () => {
       );
       const forecastData = await forecastResponse.json();
       
-      if (forecastData.daily) {
-        const d = forecastData.daily;
-        const forecastDays: ForecastDay[] = d.time.slice(0, 7).map((date: string, i: number) => ({
-          date,
-          maxTemp: Math.round(d.temperature_2m_max[i]),
-          minTemp: Math.round(d.temperature_2m_min[i]),
-          condition: mapConditionCode(d.weather_code[i], true),
-          rainProbability: d.precipitation_probability_max[i],
-          windSpeed: Math.round(d.wind_speed_10m_max[i]),
-          humidity: d.relative_humidity_2m_mean[i],
-        }));
-        setForecast(forecastDays);
+      // Validate forecast response
+      const parsedForecast = ForecastResponseSchema.safeParse(forecastData);
+      if (!parsedForecast.success) {
+        throw new Error('Invalid forecast response from API');
       }
+      
+      const d = parsedForecast.data.daily;
+      const forecastDays: ForecastDay[] = d.time.slice(0, 7).map((date: string, i: number) => ({
+        date,
+        maxTemp: Math.round(d.temperature_2m_max[i]),
+        minTemp: Math.round(d.temperature_2m_min[i]),
+        condition: mapConditionCode(d.weather_code[i], true),
+        rainProbability: d.precipitation_probability_max[i],
+        windSpeed: Math.round(d.wind_speed_10m_max[i]),
+        humidity: d.relative_humidity_2m_mean[i],
+      }));
+      setForecast(forecastDays);
 
       // Generate model comparison data (simulated variations)
-      generateModelData(forecastData.daily);
+      generateModelData(parsedForecast.data.daily);
       
       // Save location
       localStorage.setItem('tnradar_location', JSON.stringify(loc));
@@ -235,8 +334,15 @@ export const useWeather = () => {
       );
       const data = await response.json();
       
-      const quakes: Earthquake[] = data.features.slice(0, 8).map((f: any) => {
-        const mag = f.properties.mag;
+      // Validate earthquake API response
+      const parsed = EarthquakeResponseSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error('Invalid earthquake API response:', parsed.error);
+        return;
+      }
+      
+      const quakes: Earthquake[] = parsed.data.features.slice(0, 8).map((f) => {
+        const mag = f.properties.mag ?? 0;
         let severity: Earthquake['severity'] = 'minor';
         if (mag >= 7) severity = 'major';
         else if (mag >= 6) severity = 'strong';
@@ -245,7 +351,7 @@ export const useWeather = () => {
         
         return {
           id: f.id,
-          location: f.properties.place,
+          location: f.properties.place ?? 'Unknown location',
           magnitude: mag,
           depth: Math.round(f.geometry.coordinates[2]),
           time: new Date(f.properties.time).toISOString(),
