@@ -8,12 +8,14 @@ import {
   Cyclone, 
   Earthquake, 
   TsunamiAlert,
+  AirQuality,
   WeatherCondition 
 } from '@/types/weather';
 
 // Open-Meteo API (free, no API key required)
 const WEATHER_API_BASE = 'https://api.open-meteo.com/v1';
 const GEO_API_BASE = 'https://geocoding-api.open-meteo.com/v1';
+const AIR_QUALITY_API_BASE = 'https://air-quality-api.open-meteo.com/v1';
 
 // === Zod Schemas for API Response Validation ===
 
@@ -70,6 +72,20 @@ const EarthquakeFeatureSchema = z.object({
 
 const EarthquakeResponseSchema = z.object({
   features: z.array(EarthquakeFeatureSchema),
+});
+
+// Air Quality API Response Schema
+const AirQualityResponseSchema = z.object({
+  current: z.object({
+    european_aqi: z.number().nullable().optional(),
+    us_aqi: z.number().nullable().optional(),
+    pm10: z.number().nullable().optional(),
+    pm2_5: z.number().nullable().optional(),
+    nitrogen_dioxide: z.number().nullable().optional(),
+    sulphur_dioxide: z.number().nullable().optional(),
+    ozone: z.number().nullable().optional(),
+    carbon_monoxide: z.number().nullable().optional(),
+  }),
 });
 
 // === Input Validation ===
@@ -146,8 +162,19 @@ export const useWeather = () => {
   const [cyclones, setCyclones] = useState<Cyclone[]>([]);
   const [earthquakes, setEarthquakes] = useState<Earthquake[]>([]);
   const [tsunamis, setTsunamis] = useState<TsunamiAlert[]>([]);
+  const [airQuality, setAirQuality] = useState<AirQuality | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Helper function to determine AQI category
+  const getAqiCategory = (aqi: number): AirQuality['aqiCategory'] => {
+    if (aqi <= 50) return 'good';
+    if (aqi <= 100) return 'fair';
+    if (aqi <= 150) return 'moderate';
+    if (aqi <= 200) return 'poor';
+    if (aqi <= 300) return 'very-poor';
+    return 'hazardous';
+  };
 
   const searchLocation = async (query: string): Promise<Location[]> => {
     // Validate and sanitize input
@@ -245,6 +272,35 @@ export const useWeather = () => {
 
       // Generate model comparison data (simulated variations)
       generateModelData(parsedForecast.data.daily);
+
+      // Fetch air quality data (live from Open-Meteo)
+      try {
+        const airQualityResponse = await fetch(
+          `${AIR_QUALITY_API_BASE}/air-quality?latitude=${loc.lat}&longitude=${loc.lon}&current=european_aqi,us_aqi,pm10,pm2_5,nitrogen_dioxide,sulphur_dioxide,ozone,carbon_monoxide`
+        );
+        const airQualityData = await airQualityResponse.json();
+        
+        const parsedAirQuality = AirQualityResponseSchema.safeParse(airQualityData);
+        if (parsedAirQuality.success) {
+          const aq = parsedAirQuality.data.current;
+          const usAqi = aq.us_aqi ?? 0;
+          setAirQuality({
+            aqi: usAqi,
+            aqiCategory: getAqiCategory(usAqi),
+            pm25: aq.pm2_5 ?? 0,
+            pm10: aq.pm10 ?? 0,
+            no2: aq.nitrogen_dioxide ?? 0,
+            o3: aq.ozone ?? 0,
+            so2: aq.sulphur_dioxide ?? 0,
+            co: aq.carbon_monoxide ?? 0,
+            usAqi: usAqi,
+            europeanAqi: aq.european_aqi ?? 0,
+          });
+        }
+      } catch (airErr) {
+        console.error('Air quality fetch failed:', airErr);
+        // Don't fail the whole request if air quality fails
+      }
       
       // Save location
       localStorage.setItem('tnradar_location', JSON.stringify(loc));
@@ -414,6 +470,7 @@ export const useWeather = () => {
     cyclones,
     earthquakes,
     tsunamis,
+    airQuality,
     loading,
     error,
     searchLocation,
