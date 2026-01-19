@@ -452,11 +452,27 @@ export const useWeather = () => {
     localStorage.setItem('tnradar_model', modelId);
   };
 
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Initial fetch and auto-refresh every 5 minutes
   useEffect(() => {
     if (location) {
       fetchWeather(location);
+      setLastUpdated(new Date());
     }
     fetchDisasterData();
+
+    // Set up auto-refresh interval (5 minutes = 300000ms)
+    const refreshInterval = setInterval(() => {
+      if (location) {
+        console.log('Auto-refreshing weather data...');
+        fetchWeather(location);
+        setLastUpdated(new Date());
+      }
+      fetchDisasterData();
+    }, 300000);
+
+    return () => clearInterval(refreshInterval);
   }, [location, fetchWeather, fetchDisasterData]);
 
   return {
@@ -475,5 +491,6 @@ export const useWeather = () => {
     error,
     searchLocation,
     fetchWeather,
+    lastUpdated,
   };
 };

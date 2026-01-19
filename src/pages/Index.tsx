@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWeather } from '@/hooks/useWeather';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -13,10 +13,11 @@ import { TsunamiAlerts } from '@/components/disasters/TsunamiAlerts';
 import { WindAlert } from '@/components/disasters/WindAlert';
 import { LoadingState } from '@/components/LoadingState';
 import { WelcomeState } from '@/components/WelcomeState';
-import { cn } from '@/lib/utils';
+import { RefreshCw } from 'lucide-react';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('weather');
+  const [timeUntilRefresh, setTimeUntilRefresh] = useState(300);
   const {
     location,
     setLocation,
@@ -32,7 +33,29 @@ const Index = () => {
     loading,
     error,
     searchLocation,
+    lastUpdated,
   } = useWeather();
+
+  // Countdown timer for next refresh
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeUntilRefresh((prev) => (prev <= 1 ? 300 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Reset countdown when data updates
+  useEffect(() => {
+    if (lastUpdated) {
+      setTimeUntilRefresh(300);
+    }
+  }, [lastUpdated]);
+
+  const formatTimeUntilRefresh = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -40,12 +63,25 @@ const Index = () => {
       
       <main className="flex-1 container mx-auto px-4 py-6">
         {/* Search Bar */}
-        <div className="flex justify-center mb-8">
+        <div className="flex flex-col items-center gap-3 mb-8">
           <LocationSearch 
             onLocationSelect={setLocation}
             searchLocation={searchLocation}
             currentLocation={location}
           />
+          
+          {/* Auto-refresh indicator */}
+          {location && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <RefreshCw className="h-3 w-3 animate-spin-slow" />
+              <span>Auto-refresh in {formatTimeUntilRefresh(timeUntilRefresh)}</span>
+              {lastUpdated && (
+                <span className="text-muted-foreground/60">
+                  • Last updated: {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Error State */}
