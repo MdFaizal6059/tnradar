@@ -10,6 +10,7 @@ interface HeaderProps {
 const tabs = [
   { id: 'weather', label: 'Current Weather' },
   { id: 'forecast', label: 'Forecast' },
+  { id: 'airquality', label: 'Air Quality' },
   { id: 'models', label: 'Model Comparison' },
   { id: 'disasters', label: 'Storms & Disasters' },
 ];

@@ -6,6 +6,7 @@ import { LocationSearch } from '@/components/weather/LocationSearch';
 import { CurrentWeatherCard } from '@/components/weather/CurrentWeatherCard';
 import { ForecastCard } from '@/components/weather/ForecastCard';
 import { ModelComparison } from '@/components/weather/ModelComparison';
+import { AirQualityCard } from '@/components/weather/AirQualityCard';
 import { CycloneTracker } from '@/components/disasters/CycloneTracker';
 import { EarthquakeMonitor } from '@/components/disasters/EarthquakeMonitor';
 import { TsunamiAlerts } from '@/components/disasters/TsunamiAlerts';
@@ -27,6 +28,7 @@ const Index = () => {
     cyclones,
     earthquakes,
     tsunamis,
+    airQuality,
     loading,
     error,
     searchLocation,
@@ -74,6 +76,13 @@ const Index = () => {
             {activeTab === 'forecast' && (
               <div className="space-y-6">
                 <ForecastCard forecast={forecast} />
+              </div>
+            )}
+
+            {/* Air Quality Tab */}
+            {activeTab === 'airquality' && airQuality && (
+              <div className="space-y-6">
+                <AirQualityCard airQuality={airQuality} />
               </div>
             )}
 
