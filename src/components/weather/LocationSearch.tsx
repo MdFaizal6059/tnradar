@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, MapPin, Loader2 } from 'lucide-react';
+import { Search, MapPin, Loader2, Navigation } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Location } from '@/types/weather';
 import { cn } from '@/lib/utils';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { toast } from 'sonner';
 
 interface LocationSearchProps {
   onLocationSelect: (location: Location) => void;
@@ -21,6 +24,8 @@ export const LocationSearch = ({
   const [loading, setLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
+  
+  const { getCurrentLocation, loading: geoLoading, error: geoError } = useGeolocation();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -61,21 +66,48 @@ export const LocationSearch = ({
     setIsOpen(false);
   };
 
+  const handleUseCurrentLocation = async () => {
+    try {
+      const location = await getCurrentLocation();
+      onLocationSelect(location);
+      toast.success(`Weather loaded for ${location.city}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to get location');
+    }
+  };
+
   return (
     <div ref={wrapperRef} className="relative w-full max-w-md">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="text"
-          placeholder="Search city, country..."
-          value={query}
-          onChange={(e) => handleSearch(e.target.value)}
-          onFocus={() => results.length > 0 && setIsOpen(true)}
-          className="pl-10 pr-10 bg-secondary/50 border-border/50 focus:border-primary/50 h-11"
-        />
-        {loading && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
-        )}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search city, country..."
+            value={query}
+            onChange={(e) => handleSearch(e.target.value)}
+            onFocus={() => results.length > 0 && setIsOpen(true)}
+            className="pl-10 pr-10 bg-secondary/50 border-border/50 focus:border-primary/50 h-11"
+          />
+          {loading && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+          )}
+        </div>
+        
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleUseCurrentLocation}
+          disabled={geoLoading}
+          className="h-11 w-11 flex-shrink-0 bg-secondary/50 border-border/50 hover:bg-primary/20 hover:border-primary/50"
+          title="Use current location"
+        >
+          {geoLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Navigation className="h-4 w-4" />
+          )}
+        </Button>
       </div>
       
       {isOpen && results.length > 0 && (

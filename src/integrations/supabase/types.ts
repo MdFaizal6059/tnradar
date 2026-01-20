@@ -14,13 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      favorite_locations: {
+        Row: {
+          city: string
+          country: string | null
+          created_at: string
+          id: string
+          lat: number
+          locality: string | null
+          location_name: string
+          lon: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          city: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          lat: number
+          locality?: string | null
+          location_name: string
+          lon: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          city?: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          lat?: number
+          locality?: string | null
+          location_name?: string
+          lon?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_owner: { Args: { record_user_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
